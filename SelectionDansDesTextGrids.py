@@ -26,7 +26,8 @@
 def SR():
 	sousRequetes=list()
 #	sousRequetes=["à nous","A nous","de nous","De nous","pour nous","Pour nous","Chez nous","chez nous","Avec nous","avec nous","sans nous","Sans nous","parmi nous","Parmi nous","Entre nous","entre nous","Sur nous","sur nous"]
-	sousRequetes=["Tu nous","tu nous","Il nous","il nous","Elle nous","elle nous","On nous","on nous","Nous nous","nous nous","Vous nous","vous nous","Ils nous","ils nous","Elles nous","elles nous"]
+	#sousRequetes=["Tu nous","tu nous","Il nous","il nous","Elle nous","elle nous","On nous","on nous","Nous nous","nous nous","Vous nous","vous nous","Ils nous","ils nous","Elles nous","elles nous"]
+	sousRequetes=["Comme nous","comme nous","comme vous","Comme vous"]
 	return sousRequetes
 
 ##########################################################################################################################################
@@ -53,7 +54,6 @@ def retourRequete(repertoireFichierTraite,maRequete,nomEnquete,nomRepertoireFich
 
 	# Initialisation des variables
 	nomTrouve=0
-	texteTrouve=0
 	nbOcc=0
 
 	#---------------------------------------------------		
@@ -151,10 +151,89 @@ def retourRequete(repertoireFichierTraite,maRequete,nomEnquete,nomRepertoireFich
 					
 	#print(cptLignes," lignes traitées") #a decommenter
 #	print "Nombre d'occurrences de \"",maRequete,"\" : ",nbOcc	
-	
 	return([resuCSV,nomEnquete,cptLignes,maRequete])			
 	fo.close()
-	
+
+import os
+import pandas
+from pathlib import Path
+import openpyxl
+
+def wraptext(sheet):
+    """
+	Cette fonction permet d'ajouter la propriété de passer à la ligne à chaque cellule de la feuille entré en paramètre.
+    ----------
+    sheet : WorkBook
+		Feuille d'un fichier excel
+    """
+    from openpyxl.styles import Alignment
+    for rows in sheet.iter_rows(min_row=1, min_col=1):
+        for cell in rows:
+            cell.alignment = Alignment(wrap_text=True,vertical='center')#Wraptext=passsage à la ligne
+
+def fitauto(sheet):
+    """
+	Cette fonction permet d'ajuster la taille des colonnes en fonction de la taille de cellules max afin d'avoir un contenu
+	homogène.
+    ----------
+    sheet : WorkBook
+		Feuille d'un fichier excel
+    """
+    from openpyxl.utils.cell import _get_column_letter
+    column_widths = []
+    for row in sheet.iter_rows():
+        for i, cell in enumerate(row):#Pour chaque cellule de la feuille par ligne
+            try:
+                size = len(str(cell.value))
+                column_widths[i] = max(column_widths[i], size)#Compare la valeur de la largeur de colonne à celle de ces cellules
+                # print(column_widths)
+                #print(str(cell.value) + " && " + str(column_widths[i]) + " index: " + str(i))
+            except IndexError:
+                column_widths.append(len(str(cell.value)))
+    print(column_widths)
+    if column_widths.__len__() ==9:
+        column_widths[8]=100#Changement de la largeur de colonne qui sera fixe pour la colonne tour de parole
+    for i, column_width in enumerate(column_widths):
+        # print(column_width)
+        sheet.column_dimensions[_get_column_letter(
+            i + 1)].width = column_width + 1#On fixe la taille max selon le tableau column_widths
+
+def formatxlsx(path):
+    """
+	Cette fonction permet de bien formatter un fichier xlsx pour qu'elle soit présentable. Elle va appeler les fonctions
+	wraptext et fitauto pour chaque feuille du fichier excel. A la fin il va sauvegarder les modifications dans ce même path
+    Parameters
+    ----------
+    path : str
+        Path du xlsx que l'on veut bien formatter
+    """
+    wb = openpyxl.load_workbook(path)
+    wb["Data"].delete_cols(1)#Delete column of DataFrame Numbers are useless
+    for name in wb.sheetnames:
+        wraptext(wb[str(name)])
+        fitauto(wb[str(name)])
+    wb.save(path)	
+
+def csvtoxlsx(path):
+    """
+	Cette fonction permet de convertir un csv en .xlsx. Elle permet en amont d'ordonner les données en classant la colonne ['présent']
+	Mais aussi de créer un feuille où des statistiques sont rangés selon les tires/enquêtes et requêtes/sous-requêtes (permet d'avoir le nombre
+	de requêtes/sous-requêtes en fonction des tires et de leurs enquêtes)
+    Parameters
+    ----------
+    path : str
+        Path du csv que l'on veut convertir en xlsx et ajouter la feuille de statistique
+    """
+    data_frame = pandas.read_csv(path, delimiter=";")
+    data_frame = data_frame.sort_values(['présent'],ascending=False)#Ordonne les données en fonction de la colonne présent
+    piv = data_frame.pivot_table(values=['requête', 'sous-requête'], index=['enquête', 'tire'], aggfunc={'requête':'count','sous-requête':'count'}, fill_value=0)
+    piv['requête']=piv['requête']-piv['sous-requête']#Evite la redondance entre les deux colonnes car une requête peut être en fonction d'une sous-requête
+    new_filename = os.path.splitext(path)[0]+".xlsx"#Modification de l'extension du fichier
+    with pandas.ExcelWriter(new_filename) as writer:  # doctest: +SKIP
+    	data_frame.to_excel(writer, sheet_name='Data')
+    	piv.to_excel(writer, sheet_name='DataResults')
+    os.remove(path)#Supprimer le fichier .csv à la fin du traitement
+
 
 
 ##################################################################################################################################################################################################################################################################################### 
@@ -168,12 +247,17 @@ import sys
 import expansions
 import re
 import datetime
+import csv
+
 
 ###
 ###  PARAMETRES A METTRE A JOURï
 ###
 print("*********************\n DEBUT EXECUTION \n*********************\n")
 print("  PARAMèTRES\n")
+
+
+
 
 # DATE
 date=datetime.datetime.now().strftime("%y_%m_%d")
@@ -201,8 +285,8 @@ if os.path.exists(nomRepertoireACreer):
 else:
 	os.mkdir(nomRepertoireACreer)
 
-	
-fichierListe = date+"_"+"_"+sys.argv[1]+"_listeEnquetes.csv"
+variableSearch = sys.argv[1]
+fichierListe = date+"_"+"_"+variableSearch+"_listeEnquetes.csv"
 print("fichierListe = ",fichierListe,"\n")
 
 print("    FIN PARAMETRES \n**************************\n")
@@ -215,7 +299,7 @@ print("    FIN PARAMETRES \n**************************\n")
 listeRequetes=list()
 
 ## Recours au module expansions.py, dans lequel est définie exhaustivement l'expansion de la chaîne donnée en argument de l'appel du présent programme
-listeRequetes=expansions.expansion(sys.argv[1])
+listeRequetes=expansions.expansion(variableSearch)
 
 
 print('Requetes de cette extraction : ',listeRequetes)
@@ -238,7 +322,7 @@ listeFichiers.write("Nom Enquête;requête; Nb. mots traités;\n")
 
 
 # initialisation du fichier résultat (pour toutes les enquêtes du corpus ; la fonction retourRequete fabrique aussi un csv pour chaque enquête)
-fichierResu=open(nomRepertoireFichiersResultats+"/"+sys.argv[1]+".csv",'w')
+fichierResu=open(nomRepertoireFichiersResultats+"/"+variableSearch+".csv",'w')
 fichierResu.write("présent;enquête;requête;temps;tire;stringIndex;sous-requête;indexRE;tour de parole\n")
 
 
@@ -257,12 +341,15 @@ for row in listeTranscriptionsATraiter: # boucle sur les transcriptions
 			if ret[0] != '': # ici, si retourRequete a retourné un résultat, on inscrit dans le fichier résultat. 
 									#Sinon, on inscrit dans le fichier résultat une ligne qui indique que la recherche a été faite pour cette transcription.
 				fichierResu.write(ret[0]),"\n"
-				#print(ret[0])
+				#print(ret[0]+"\n")
 			else:
 				fichierResu.write("N"+";"+row+";"+rr+"\n")
 		# Ecriture du fichier des requêtes traitées et du nombre de mots pour chacune 
-		#(ce qui permet de vérifier que les fichiers ont été lus par le programme))		
+		#(ce qui permet de vérifier que les fichiers ont été lus par le programme))	
 			listeFichiers.write(str(ret[1])+";"+str(ret[3])+";"+str(ret[2])+";"+"\n")
 				
+fichierResu.close()
 
-	
+#Appel des fonction à la fin de la création du fichier .csv
+csvtoxlsx(nomRepertoireFichiersResultats+"/"+variableSearch+".csv")
+formatxlsx(nomRepertoireFichiersResultats+"/"+variableSearch+".xlsx")
