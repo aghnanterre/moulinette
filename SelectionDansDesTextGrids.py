@@ -227,7 +227,6 @@ def csvtoxlsx(path):
     data_frame = pandas.read_csv(path, delimiter=";")
     data_frame = data_frame.sort_values(['présent'],ascending=False)#Ordonne les données en fonction de la colonne présent
     piv = data_frame.pivot_table(values=['requête', 'sous-requête'], index=['enquête', 'tire'], aggfunc={'requête':'count','sous-requête':'count'}, fill_value=0)
-    piv['requête']=piv['requête']-piv['sous-requête']#Evite la redondance entre les deux colonnes car une requête peut être en fonction d'une sous-requête
     new_filename = os.path.splitext(path)[0]+".xlsx"#Modification de l'extension du fichier
     with pandas.ExcelWriter(new_filename) as writer:  # doctest: +SKIP
     	data_frame.to_excel(writer, sheet_name='Data')
