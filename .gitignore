@@ -3,3 +3,4 @@ resultats/
 archive/
 _pycache_/
 *.docx
+.DS_Store
